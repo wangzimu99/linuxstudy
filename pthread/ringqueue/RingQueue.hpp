@@ -50,7 +50,6 @@ public:
         P(_datasem);
         pthread_mutex_lock(&_cmutex);
         *out=_queue[_consumerstep++];
-
         _consumerstep%=_cap;
         pthread_mutex_unlock(&_cmutex);
         V(_spacesem);

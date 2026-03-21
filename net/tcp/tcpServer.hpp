@@ -4,15 +4,32 @@
 #include <cstring>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <assert.h>
+#include <pthread.h>
 #include "log.hpp"
+#include "daemon.hpp"
 namespace server
 {
 	enum {USAGE_ERR=1,SOCKET_ERR,BIND_ERR,LESSON_ERR};
     static const uint16_t gport=8080;
     static const int gbacklog=5;
+    class TcpServer;
+    class ThreadData
+    {
+    public:
+        ThreadData(TcpServer* self,int sock)
+        :_self(self)
+        ,_sock(sock)
+        {}
+    public:
+        TcpServer* _self;
+        int _sock;
+    };
+
+
     class TcpServer
     {
     public:
@@ -53,6 +70,7 @@ namespace server
 
         void start()
         {
+            signal(SIGCHLD,SIG_IGN);
             for(;;)
             {
                 //4、server获取新连接
@@ -66,12 +84,43 @@ namespace server
                 }
                  logMessage(NORMAL,"accept a new link success");
                  std::cout<<"sock:"<<sock<<std::endl;
-                 //5、这里就是一个sock，未来通信就用这个sock，面向字节流，后续都是文件操作！
-                 //version 1
-                 serviceIO(sock);
-                 close(sock);//对于一个已经使用完毕的socket,我们要关闭这个sock，要不然会导致文件描述符泄露
+                //  //5、这里就是一个sock，未来通信就用这个sock，面向字节流，后续都是文件操作！
+                //  //version 1
+                //  serviceIO(sock);
+                //  close(sock);//对于一个已经使用完毕的socket,我们要关闭这个sock，要不然会导致文件描述符泄露
+                //version2 多进程版
+                //  pid_t id=fork();
+                // if(id=0)
+                // {
+                //     //子进程
+                //     close(_listensock);
+                //     //if(fork()>0)exit(0);
+                //     serviceIO(sock);
+                //     close(sock);
+                //     exit(0);
+                // }
+                // close(sock);
+                // pid_t ret=waitpid(id,nullptr,0);
+                // if(ret>0)
+                // {
+                //     std::cout<<"wait success:"<<ret<<std::endl;
+                // }
+                //version3多线程版
+                pthread_t tid;
+                ThreadData* td=new ThreadData(this,sock);
+                pthread_create(&tid,nullptr,threadRoutine,td);
+                //pthread_join(tid,nullptr);
             }
+        }
 
+        static void* threadRoutine(void* args)
+        {
+            pthread_detach(pthread_self());
+            ThreadData* td=static_cast<ThreadData*>(args);
+            td->_self->serviceIO(td->_sock);
+            close(td->_sock);
+            delete td;
+            return nullptr;
         }
 
         void serviceIO(int sock)

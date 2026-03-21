@@ -17,9 +17,11 @@ int main(int argc,char* argv[])
         usage(argv[0]);
         exit(USAGE_ERR);
     }
+    
     uint16_t port=atoi(argv[1]); 
     unique_ptr<TcpServer> tsvr(new TcpServer(port));
     tsvr->initServer();
+    daemonSelf();
     tsvr->start();
 
     return 0;
